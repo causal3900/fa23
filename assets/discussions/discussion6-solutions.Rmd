@@ -1,0 +1,151 @@
+---
+title: "Discussion6-gformula"
+author: "Mayleen and Daniel"
+date: "2023-09-26"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval=TRUE)
+```
+
+# Discussion: Parametric g-formula
+
+## Download the Data
+
+Follow the steps on Ed Discussion to download the data!
+```{r}
+library(tidyverse)
+d <- readRDS("d.RDS")
+```
+
+After you download the data and save it into the variable name `d`, go up top to where it says `knitr::opts_chunk$set(echo = TRUE, eval=F)` at the top of the R Markdown file and change `eval` to true, i.e. set `eval=T` so that when you knit the file, your code runs.
+
+## Learn a model to predict $Y$ given $\{A,\vec{L}\}$
+You can learn more about the `lm` function [**here**](https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/lm).
+Note that this function takes several arguments. The first argument is a formula, specifically a symbolic description of the model to be fitted. 
+
+```{r}
+# The following formula represents Y as a function of our treatment (A) and all our confounders
+f <- y ~ a*(sex + race + mom_educ + dad_educ + log_parent_income +
+  log_parent_wealth + test_percentile)
+
+# Estimate the model with OLS
+fit <- lm(formula = f, data = d)
+```
+
+## Predict conditional average potential outcomes for every unit
+
+Next, we are going to create two copies of our original data. The first copy
+will set all the treatment values `= "no_college"` and the second copy will
+set all the treatment values `= "college"`.
+```{r}
+d_all_control <- d %>%
+  mutate(a = "no_college")
+
+d_all_treated <- d %>%
+  mutate(a = "college")
+```
+
+Next we will use our linear regression estimated above to predict both potential
+outcomes for each individual using the two data.frames that we just created. We
+will then append the estimated potential outcomes to our original data.
+To see more details on the `predict` function, see the 
+[documentation here](https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/predict).
+
+```{r}
+# Estimate potential outcomes using our model
+potential_outcomes_under_control <- predict(object = fit, newdata = d_all_control)
+potential_outcomes_under_treatment <- predict(object = fit, newdata = d_all_treated)
+
+conditional_average_outcomes <- d %>%
+  mutate(yhat0 = potential_outcomes_under_control,
+         yhat1 = potential_outcomes_under_treatment)
+```
+
+## Difference to estimate conditional average effects
+
+Now, we will estimate the causal effect for each individual by taking the
+difference between their potential outcomes.
+
+```{r}
+conditional_average_effects <- conditional_average_outcomes %>%
+  mutate(effect = yhat1 - yhat0)
+```
+
+## Average over units
+
+Now, we can calculate the average treatment effect by taking the average
+individual effect across the whole data.frame. __HINT__: Use the `summarise`
+function to take the mean effect over the whole data.frame.
+
+```{r}
+conditional_average_effects %>%
+  select(yhat1, yhat0, effect) %>%
+  summarise(across(.fns = mean))
+```
+
+Alternative:
+```
+conditional_average_effects %>%
+  select(yhat1, yhat0, effect) %>%
+  summarise_all(.funs = mean)
+```
+## Extension 1: Conditional average effects
+
+Modify the procedure above to estimate the average effect in subgroups defined by mom's education:
+
+1.  those with `sex == Male`
+2.  those with `sex == Female`
+
+Specifically this means, what is the average effect among those for whom `sex == Male`?
+Among those for whom `sex == Female`? __HINT__: this should only be a slight modification
+of your code above that takes the average for the whole data.frame.
+
+```{r}
+conditional_average_effects %>%
+  select(yhat1, yhat0, effect, sex) %>%
+  group_by(sex) %>%
+  summarise(across(.fns = mean))
+```
+
+## Extension 2: Logistic regression
+
+In groups: Repeat the steps above with logistic regression
+
+$$\text{log}\left(\frac{\hat{P}\left(Y\mid A = a, \vec{L} = \vec\ell\right)}{1 - \hat{P}\left(Y\mid A = a, \vec{L} = \vec\ell\right)}\right) = \hat\alpha + A\hat\beta + \vec{L}'\hat{\vec\gamma} + A\vec{L}'\hat{\vec\eta}$$ Helpful hints:
+
+-   This should be a simple extension of all the code above that uses `lm()`.
+-   Read about using `glm()` to estimate logistic regression
+-   when using `predict()`, search to find out how to predict probabilities
+
+## Extension: Logistic regression
+
+Fit a model
+
+```{r}
+f <- y ~ a*(sex + race + mom_educ + dad_educ + log_parent_income +
+  log_parent_wealth + test_percentile)
+
+fit <- glm(formula = f, family = binomial, data = d)
+```
+
+## Extension: Logistic regression
+
+Predict and summarize to estimate the average effect
+
+\footnotesize
+
+```{r}
+potential_outcomes_under_control <- predict(object = fit, newdata = d_all_control, type = "response")
+potential_outcomes_under_treatment <- predict(object = fit, newdata = d_all_treated, type = "response")
+
+conditional_average_outcomes <- d %>%
+  mutate(yhat1 = potential_outcomes_under_treatment,
+         yhat0 = potential_outcomes_under_control,
+         effect = yhat1 - yhat0) %>%
+  select(yhat1, yhat0, effect) %>%
+  summarise(across(.fns = mean))
+
+conditional_average_outcomes
+```
